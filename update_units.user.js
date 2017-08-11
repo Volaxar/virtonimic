@@ -1,4 +1,4 @@
-// ==UserScript==
+﻿// ==UserScript==
 // @name         Обновление предприятий
 // @version      0.1
 // @descroption  Расчёт количества материалов с учётом заказов
@@ -27,11 +27,13 @@
 
                 var cell = line.children('td').eq(6);
                 var count = Math.ceil(parseInt(product['sale'][product['id']]) * multiplier);
-                cell.append('</br><span class="pseudolink min-order">' + count + '</span></br>');
+                cell.append('</br><span class="pseudolink order-count">' + count + '</span>');
+                cell.append('</br><span class="pseudolink order-count">' + parseInt(count * 1.10) + '</span>');
+                cell.append('</br><span class="pseudolink order-count">' + parseInt(count * 2) + '</span>');
             }
         });
 
-        $('span.min-order').css('margin-right', '3px').click(function () {
+        $('span.order-count').css('margin-right', '3px').click(function () {
             var spanCount = $(this);
             var itemId = spanCount.parents('tr').eq(0).attr('id').replace('r', 'qc');
             var input = $('#' + itemId);
@@ -41,7 +43,7 @@
     };
 
     var loadRawData = function () {
-        localforage.getItem(materialName).then(function (value) {
+        localforage.getItem('Материалы_' + product['name']).then(function (value) {
             product['id'] = value['id'];
             product['raws'] = value['raws'];
 
@@ -52,6 +54,7 @@
     var saveRawData = function (unitTypeId) {
         $.get('/' + realmName + '/main/industry/unit_type/info/' + unitTypeId, function (data) {
             var productList = $(data).find('#mainContent table.grid:first > tbody > tr:gt(0)');
+            var productData = [];
 
             productList.each(function () {
                 var productName = $(this).children('td').eq(0).text();
@@ -70,17 +73,33 @@
                     raws[rawName] = count;
                 });
 
-                var productId = $(this).children('td').eq(3).find('a:first').attr('href').match(/^.*?(\d+)$/)[1];
-
                 if (productName == product['name']) {
-                    product['id'] = productId;
-                    product['raws'] = raws;
+                    product.raws = raws;
                 }
 
-                localforage.setItem('Материалы_' + productName, {
+                var productId = $(this).children('td').eq(3).find('a:first').attr('href').match(/^.*?(\d+)$/)[1];
+
+                productData.push({
                     'id': productId,
-                    'raws': raws
+                    'name': productName,
+                    'raws': raws,
+                    'value': {}
                 });
+            });
+
+            var valueList = $(data).find('#mainContent table.grid:last > tbody > tr:gt(1)');
+
+            valueList.each(function () {
+                var equipLine = $(this);
+                var equipCount = equipLine.children('td').eq(1).text().match(/\d+$/);
+
+                productData.forEach(function (item, i) {
+                    item['value'][equipCount] = equipLine.children('td').eq(3+i).children().text().replace(/\s+/g, '');
+                });
+            });
+
+            productData.forEach(function (item) {
+                localforage.setItem('Материалы_' + item.name, item);
             });
 
             setMaterialValue();
@@ -91,7 +110,7 @@
     // Загружаем страницу сбыта.
     // Получаем название специализации, типа юнита.
     var loadSalePage = function (data) {
-        product['name'] = $(data).find('#mainContent table:first td:eq(2)').text();
+        product['name'] = $(data).find('#mainContent > table:first td:eq(2)').text();
 
         unitTypeName = $(data).find('#headerInfo h1').text();
 
@@ -106,7 +125,7 @@
 
         // Проверяем наличие информации по составу продукта
         localforage.keys().then(function (value) {
-            if (value.indexOf(product['name']) != -1) {
+            if (value.indexOf('Материалы_' + product['name']) != -1) {
                 loadRawData();
             } else {
                 $.get('/' + realmName + '/main/common/main_page/game_info/industry', function (data) {
